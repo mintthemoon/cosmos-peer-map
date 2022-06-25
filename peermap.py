@@ -7,6 +7,9 @@ import plotly.express as px
 import pandas as pd
 
 def main():
+    if len(sys.argv) < 2:
+        raise RuntimeError("usage: peermap.py <html_out>")
+    html_out = sys.argv[1]
     rpc_url = os.environ.get("RPC_URL", "http://localhost:26657")
     net_info_response = requests.get(rpc_url + "/net_info")
     net_info_response.raise_for_status()
@@ -29,8 +32,7 @@ def main():
                         center=dict(lat=0, lon=90), zoom=1,
                             mapbox_style="carto-darkmatter")
     fig.update_layout(title = 'Kujira Nodes', title_x=0.5)
-    # use first argument as HTML output
-    fig.write_html(sys.argv[1])
+    fig.write_html(html_out)
 
 if __name__ == "__main__":
     main()
