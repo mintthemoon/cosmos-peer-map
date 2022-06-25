@@ -12,16 +12,15 @@ class Peer:
     def __init__(self, name, ip):
         self.name = name
         self.ip = ip
-        self.location = self.get_location()
-
-    def get_location(self):
         try:
             api_info = requests.get(self.api_url + self.ip).json()
-            location = (api_info["lat"], api_info["lon"])
+            self.org = api_info["org"]
+            self.city = api_info["city"]
+            self.country = api_info["country"]
+            self.loc = (api_info["lat"], api_info["lon"])
         except Exception as err:
             print(f"failed to map {self.ip} ({self.name})")
-            location = None
-        return location
+            self.loc = None
 
 
 def main():
@@ -39,18 +38,22 @@ def main():
         for peer in net_info["result"]["peers"]
     ]
     peers_data = [
-        (peer.name, peer.location[0], peer.location[1])
-        for peer in peers 
-        if peer.location
+        (peer.name, peer.loc[0], peer.loc[1], peer.ip, peer.country, peer.city, peer.org)
+        for peer in peers
+        if peer.loc
     ]
-    peers_data = pd.DataFrame.from_records(peers_data, columns=("name", "lat", "lon"))
+    peers_df = pd.DataFrame.from_records(
+        peers_data, 
+        columns=("name", "lat", "lon", "ip", "country", "city", "org")
+    )
     fig = px.density_mapbox(
-        peers_data,
+        peers_df,
         hover_name="name",
+        hover_data=("ip", "country", "city", "org"),
         lat="lat",
         lon="lon",
         radius=10,
-        center=dict(lat=40, lon=-20),
+        center={"lat": 40, "lon": -20},
         zoom=2,
         mapbox_style="carto-darkmatter",
     )
