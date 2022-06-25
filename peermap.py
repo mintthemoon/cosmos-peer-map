@@ -39,15 +39,20 @@ def main():
         Peer(name=peer["node_info"]["moniker"], ip=peer["remote_ip"])
         for peer in net_info["result"]["peers"]
     ]
-    coordinates = {peer.name: peer.location for peer in peers if peer.location}
-    df = pd.DataFrame.from_dict(coordinates, orient="index", columns=["lat", "long"])
+    peers_data = [
+        (peer.name, peer.location[0], peer.location[1])
+        for peer in peers 
+        if peer.location
+    ]
+    peers_data = pd.DataFrame.from_records(peers_data, columns=("name", "lat", "lon"))
     fig = px.density_mapbox(
-        df,
+        peers_data,
+        hover_name="name",
         lat="lat",
-        lon="long",
+        lon="lon",
         radius=10,
-        center=dict(lat=0, lon=90),
-        zoom=1,
+        center=dict(lat=40, lon=-20),
+        zoom=2,
         mapbox_style="carto-darkmatter",
     )
     fig.update_layout(title="Cosmos Peer Map", title_x=0.5)
