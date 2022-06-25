@@ -1,7 +1,6 @@
 import os
 import json
 import requests
-from geoip import geolite2
 import sys
 import plotly.express as px
 import pandas as pd
