@@ -16,7 +16,7 @@ python3 peermap.py > peers.html
 
 run with remote rpc:
 ```
-RPC_URL=<url> python3 peermap.py > peermap.html
+RPC_URL=<url> python3 peermap.py > peers.html
 ```
 
 ## notes
