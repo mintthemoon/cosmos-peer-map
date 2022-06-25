@@ -8,15 +8,21 @@ import pandas as pd
 
 
 class Peer:
+    api_url = "http://ip-api.com/json/"
+
     def __init__(self, name, ip):
         self.name = name
         self.ip = ip
-        self.location = locate_ip(ip)
+        self.location = self.get_location()
 
-
-def locate_ip(ip):
-    location_info = geolite2.lookup(ip)
-    return location_info.location if location_info else None
+    def get_location(self):
+        try:
+            api_info = requests.get(self.api_url + self.ip).json()
+            location = (api_info["lat"], api_info["lon"])
+        except Exception as err:
+            print(f"failed to map {self.ip} ({self.name})")
+            location = None
+        return location
 
 
 def main():
