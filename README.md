@@ -20,4 +20,4 @@ RPC_URL=<url> python3 peermap.py peers.html
 ```
 
 ## notes
-uses geolite2 for data which is a free API, you may hit request limits running too many times from one device.
+uses ip-api.com for data which is a free API, you may hit request limits running too many times from one device.
