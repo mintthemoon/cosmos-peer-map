@@ -1,8 +1,10 @@
 import os
 import json
-import folium
 import requests
 from geoip import geolite2
+import sys
+import plotly.express as px
+import pandas as pd
 
 def main():
     rpc_url = os.environ.get("RPC_URL", "http://localhost:26657")
@@ -21,12 +23,14 @@ def main():
         for moniker, lookup in lookups.items() 
         if lookup
     }
-    peer_map = folium.Map(location=(20.0, -40.0), zoom_start=3)
-    markers = [
-        folium.Marker(loc, popup=moniker).add_to(peer_map)
-        for moniker, loc in coordinates.items()
-    ]
-    print(peer_map._repr_html_())
+    
+    df = pd.DataFrame.from_dict(coordinates,orient='index', columns=['lat','long'])
+    fig = px.density_mapbox(df, lat='lat', lon='long', radius=10,
+                        center=dict(lat=0, lon=90), zoom=1,
+                            mapbox_style="carto-darkmatter")
+    fig.update_layout(title = 'Kujira Nodes', title_x=0.5)
+    # use first argument as HTML output
+    fig.write_html(sys.argv[1])
 
 if __name__ == "__main__":
     main()
