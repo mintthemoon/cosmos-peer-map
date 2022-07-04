@@ -65,16 +65,17 @@ class Peer:
             self.loc = None
     
     def get_api_info(self):
-        cache_info = db.get(self.ip)
+        cache_info = db.get(self.ip) if db else None
         if cache_info:
-            log.debug("api cache hit: %s", self.name)
+            log.debug("cache hit: %s", self.name)
             api_info = json.loads(cache_info)
         else:
             try:
-                log.debug("api cache miss: %s", self.name)
+                log.debug("cache miss: %s", self.name)
                 api_response = requests.get(self.api_url + self.ip)
                 api_response.raise_for_status()
-                db.set(self.ip, api_response.content)
+                if db:
+                    db.set(self.ip, api_response.content)
                 api_info = api_response.json()
             except Exception as err:
                 log.warning("api error: %s", self.name)
@@ -92,10 +93,14 @@ else:
 logging.basicConfig(format="[%(asctime)s] %(levelname)s: %(message)s", level=loglevel)
 log = logging.getLogger()
 rpc_url = os.environ.get("RPC_URL", "http://localhost:26657")
-redis_host = os.environ.get("REDIS_HOST", "localhost")
-redis_port = os.environ.get("REDIS_PORT", 6379)
-log.info("connecting to redis at %s:%d", redis_host, redis_port)
-db = redis.Redis(host=redis_host, port=redis_port)
+if os.environ.get("CACHE") not in ("0", "false"):
+    redis_host = os.environ.get("REDIS_HOST", "localhost")
+    redis_port = os.environ.get("REDIS_PORT", 6379)
+    log.info("connecting to redis at %s:%d", redis_host, redis_port)
+    db = redis.Redis(host=redis_host, port=redis_port)
+else:
+    log.info("skipping cache initialization")
+    db = None
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
