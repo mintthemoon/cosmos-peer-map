@@ -1,9 +1,51 @@
 import os
-import json
-import requests
 import sys
-import plotly.express as px
+import json
+import redis
+import logging
+import requests
 import pandas as pd
+import plotly.express as px
+from flask import Flask
+
+class PeerMap:
+    peers_frame_cols = ("name", "lat", "lon", "ip", "country", "city", "org")
+
+    def __init__(self, rpc):
+        log.info("creating peer map for %s", rpc.url)
+        self.rpc = rpc
+        self.peers = rpc.located_peers
+        self.peers_data = [peer.get_data() for peer in self.peers]
+        self.peers_frame = pd.DataFrame.from_records(self.peers_data, columns=self.peers_frame_cols)
+        self.figure = px.density_mapbox(
+            self.peers_frame,
+            hover_name="name",
+            hover_data=("ip", "country", "city", "org"),
+            lat="lat",
+            lon="lon",
+            radius=10,
+            center={"lat": 20, "lon": 0},
+            zoom=1.5,
+            mapbox_style="carto-darkmatter",
+        )
+        self.figure.update_layout(title="Cosmos Peer Map", title_x=0.5)
+        log.info("created peer map for %s", rpc.url)
+
+
+class RPC:
+    def __init__(self, url):
+        self.url = url
+        log.info("requesting peer list from %s", self.url)
+        net_info_response = requests.get(self.url + "/net_info")
+        net_info_response.raise_for_status()
+        self.net_info = net_info_response.json()
+        log.debug("mapping peers")
+        self.peers = [
+            Peer(name=peer["node_info"]["moniker"], ip=peer["remote_ip"])
+            for peer in self.net_info["result"]["peers"]
+        ]
+        self.located_peers = [peer for peer in self.peers if peer.loc]
+        log.debug("mapped %d peers", len(self.located_peers))
 
 
 class Peer:
@@ -12,54 +54,63 @@ class Peer:
     def __init__(self, name, ip):
         self.name = name
         self.ip = ip
-        try:
-            api_info = requests.get(self.api_url + self.ip).json()
+        api_info = self.get_api_info()
+        if api_info:
             self.org = api_info["org"]
             self.city = api_info["city"]
             self.country = api_info["country"]
             self.loc = (api_info["lat"], api_info["lon"])
-        except Exception as err:
-            print(f"failed to map {self.ip} ({self.name})")
+        else:            
+            log.warning("failed to map %s (%s)", self.ip, self.name)
             self.loc = None
+    
+    def get_api_info(self):
+        cache_info = db.get(self.ip)
+        if cache_info:
+            log.debug("api cache hit: %s", self.name)
+            api_info = json.loads(cache_info)
+        else:
+            try:
+                log.debug("api cache miss: %s", self.name)
+                api_response = requests.get(self.api_url + self.ip)
+                api_response.raise_for_status()
+                db.set(self.ip, api_response.content)
+                api_info = api_response.json()
+            except Exception as err:
+                log.warning("api error: %s", self.name)
+                api_info = None
+        return api_info
+
+    def get_data(self):
+        return (self.name, self.loc[0], self.loc[1], self.ip, self.country, self.city, self.org)
 
 
-def main():
+if os.environ.get("DEBUG") in ("1", "true"):
+    loglevel = logging.DEBUG
+else:
+    loglevel = logging.INFO
+logging.basicConfig(format="[%(asctime)s] %(levelname)s: %(message)s", level=loglevel)
+log = logging.getLogger()
+rpc_url = os.environ.get("RPC_URL", "http://localhost:26657")
+redis_host = os.environ.get("REDIS_HOST", "localhost")
+redis_port = os.environ.get("REDIS_PORT", 6379)
+log.info("connecting to redis at %s:%d", redis_host, redis_port)
+db = redis.Redis(host=redis_host, port=redis_port)
+
+if __name__ == "__main__":
     if len(sys.argv) < 2:
         raise RuntimeError("usage: peermap.py <html_out>")
     html_out = sys.argv[1]
-    rpc_url = os.environ.get("RPC_URL", "http://localhost:26657")
-    net_info_response = requests.get(rpc_url + "/net_info")
-    net_info_response.raise_for_status()
-    net_info = net_info_response.json()
-    if "result" not in net_info:
-        raise RuntimeError("invalid rpc response")
-    peers = [
-        Peer(name=peer["node_info"]["moniker"], ip=peer["remote_ip"])
-        for peer in net_info["result"]["peers"]
-    ]
-    peers_data = [
-        (peer.name, peer.loc[0], peer.loc[1], peer.ip, peer.country, peer.city, peer.org)
-        for peer in peers
-        if peer.loc
-    ]
-    peers_df = pd.DataFrame.from_records(
-        peers_data, 
-        columns=("name", "lat", "lon", "ip", "country", "city", "org")
-    )
-    fig = px.density_mapbox(
-        peers_df,
-        hover_name="name",
-        hover_data=("ip", "country", "city", "org"),
-        lat="lat",
-        lon="lon",
-        radius=10,
-        center={"lat": 40, "lon": -20},
-        zoom=2,
-        mapbox_style="carto-darkmatter",
-    )
-    fig.update_layout(title="Cosmos Peer Map", title_x=0.5)
-    fig.write_html(html_out)
+    rpc = RPC(url=rpc_url)
+    peermap = PeerMap(rpc=rpc)
+    peermap.figure.write_html(html_out)
+    sys.exit(0)
 
+app = Flask(__name__)
+log = app.logger
 
-if __name__ == "__main__":
-    main()
+@app.route('/')
+def index():
+    rpc = RPC(url=rpc_url)
+    peermap = PeerMap(rpc=rpc)
+    return peermap.figure.to_html()
