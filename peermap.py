@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.express as px
 from flask import Flask
 
+
 class PeerMap:
     peers_frame_cols = ("name", "lat", "lon", "ip", "country", "city", "org")
 
@@ -16,7 +17,9 @@ class PeerMap:
         self.rpc = rpc
         self.peers = rpc.located_peers
         self.peers_data = [peer.get_data() for peer in self.peers]
-        self.peers_frame = pd.DataFrame.from_records(self.peers_data, columns=self.peers_frame_cols)
+        self.peers_frame = pd.DataFrame.from_records(
+            self.peers_data, columns=self.peers_frame_cols
+        )
         self.figure = px.density_mapbox(
             self.peers_frame,
             hover_name="name",
@@ -29,8 +32,8 @@ class PeerMap:
             mapbox_style="carto-darkmatter",
         )
         self.figure.update_layout(
-            margin={"l": 0, "r": 0, "b": 0, "t": 0, "pad": 0}, 
-            coloraxis={"showscale": False}
+            margin={"l": 0, "r": 0, "b": 0, "t": 0, "pad": 0},
+            coloraxis={"showscale": False},
         )
         log.info("created peer map for %s", rpc.url)
 
@@ -62,7 +65,6 @@ class RPC:
             Peer(name=peer["node_info"]["moniker"], ip=peer["remote_ip"])
             for peer in net_info["result"]["peers"]
         ]
-        
 
 
 class Peer:
@@ -77,10 +79,10 @@ class Peer:
             self.city = api_info["city"]
             self.country = api_info["country"]
             self.loc = (api_info["lat"], api_info["lon"])
-        else:            
+        else:
             log.warning("failed to map %s (%s)", self.ip, self.name)
             self.loc = None
-    
+
     def get_api_info(self):
         cache_info = db.get(f"peer-{self.ip}") if db else None
         if cache_info:
@@ -100,7 +102,15 @@ class Peer:
         return api_info
 
     def get_data(self):
-        return (self.name, self.loc[0], self.loc[1], self.ip, self.country, self.city, self.org)
+        return (
+            self.name,
+            self.loc[0],
+            self.loc[1],
+            self.ip,
+            self.country,
+            self.city,
+            self.org,
+        )
 
 
 if os.environ.get("DEBUG") in ("1", "true"):
@@ -133,7 +143,8 @@ if __name__ == "__main__":
 app = Flask(__name__)
 log = app.logger
 
-@app.route('/')
+
+@app.route("/")
 def index():
     rpc = RPC(url=rpc_url)
     peermap = PeerMap(rpc=rpc)
