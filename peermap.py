@@ -33,19 +33,33 @@ class PeerMap:
 
 
 class RPC:
+    cache_ttl_seconds = 300
+
     def __init__(self, url):
         self.url = url
-        log.info("requesting peer list from %s", self.url)
-        net_info_response = requests.get(self.url + "/net_info")
-        net_info_response.raise_for_status()
-        self.net_info = net_info_response.json()
         log.debug("mapping peers")
-        self.peers = [
-            Peer(name=peer["node_info"]["moniker"], ip=peer["remote_ip"])
-            for peer in self.net_info["result"]["peers"]
-        ]
+        self.peers = self.get_peers()
         self.located_peers = [peer for peer in self.peers if peer.loc]
         log.debug("mapped %d peers", len(self.located_peers))
+
+    def get_peers(self):
+        cache_info = db.get(f"rpc-{self.url}") if db else None
+        if cache_info:
+            log.info("using cached peer list for %s", self.url)
+            net_info = json.loads(cache_info)
+        else:
+            log.info("requesting peer list from %s", self.url)
+            net_info_response = requests.get(self.url + "/net_info")
+            net_info_response.raise_for_status()
+            net_info = net_info_response.json()
+            if db:
+                db.set(f"rpc-{self.url}", net_info_response.content)
+                db.expire(f"rpc-{self.url}", self.cache_ttl_seconds)
+        return [
+            Peer(name=peer["node_info"]["moniker"], ip=peer["remote_ip"])
+            for peer in net_info["result"]["peers"]
+        ]
+        
 
 
 class Peer:
@@ -65,7 +79,7 @@ class Peer:
             self.loc = None
     
     def get_api_info(self):
-        cache_info = db.get(self.ip) if db else None
+        cache_info = db.get(f"peer-{self.ip}") if db else None
         if cache_info:
             log.debug("cache hit: %s", self.name)
             api_info = json.loads(cache_info)
@@ -75,7 +89,7 @@ class Peer:
                 api_response = requests.get(self.api_url + self.ip)
                 api_response.raise_for_status()
                 if db:
-                    db.set(self.ip, api_response.content)
+                    db.set(f"peer-{self.ip}", api_response.content)
                 api_info = api_response.json()
             except Exception as err:
                 log.warning("api error: %s", self.name)
@@ -96,7 +110,9 @@ rpc_url = os.environ.get("RPC_URL", "http://localhost:26657")
 if os.environ.get("CACHE") not in ("0", "false"):
     redis_host = os.environ.get("REDIS_HOST", "localhost")
     redis_port = os.environ.get("REDIS_PORT", 6379)
+    RPC.cache_ttl_seconds = int(os.environ.get("RPC_CACHE_TTL_SECONDS", 300))
     log.info("connecting to redis at %s:%d", redis_host, redis_port)
+    log.debug("rpc cache ttl: %d seconds", RPC.cache_ttl_seconds)
     db = redis.Redis(host=redis_host, port=redis_port)
 else:
     log.info("skipping cache initialization")
