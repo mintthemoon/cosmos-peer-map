@@ -28,7 +28,10 @@ class PeerMap:
             zoom=1.5,
             mapbox_style="carto-darkmatter",
         )
-        self.figure.update_layout(title="Cosmos Peer Map", title_x=0.5)
+        self.figure.update_layout(
+            margin={"l": 0, "r": 0, "b": 0, "t": 0, "pad": 0}, 
+            coloraxis={"showscale": False}
+        )
         log.info("created peer map for %s", rpc.url)
 
 
